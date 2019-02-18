@@ -16,7 +16,7 @@
 #include <DallasTemperature.h>
 #include <RBD_Timer.h>
 
-#define DEVICE_ID "kollektor";
+#define DEVICE_ID "kollektor"
 #define VERSION 1
 
 #define RESET_UPTIME_TIME 43200000  //  = 30 * 24 * 60 * 60 * 1000 
