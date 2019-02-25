@@ -3,6 +3,7 @@
                                 Copyright © 2019, Zigfred & Nik.S
 31.01.2019 v1
 18.02.2019 V2 Прерывания PCINT0_vect, PCINT1_vect и PCINT2_vect
+25.02.2019 V3 dell PCINT0_vect, PCINT1_vect и PCINT2_vect
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*******************************************************************\
 Сервер kollektor выдает данные: 
@@ -11,30 +12,20 @@
     датчики температуры DS18B20
 /*******************************************************************/
 
-#include <Ethernet.h>
-#include <SPI.h>
+#include <Ethernet2.h> //IPAddress ip(192, 168, 1, 159); 
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <RBD_Timer.h>
 
 #define DEVICE_ID "kollektor";
-#define VERSION 2
-
-#define RESET_UPTIME_TIME 43200000  //  = 30 * 24 * 60 * 60 * 1000 
-                                    // reset after 30 days uptime 
-
-//IPAddress ip(192, 168, 1, 159); 
+#define VERSION 3
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0x88, 0x88};
 EthernetServer httpServer(40159);
-#define SWITCH_TO_W5100 digitalWrite(4,HIGH); digitalWrite(10,LOW)    //  Переключение на интернет
-
+#define RESET_UPTIME_TIME 43200000  //  = 30 * 24 * 60 * 60 * 1000 
+                                    // reset after 30 days uptime 
 #define DS18_CONVERSION_TIME 750 // (1 << (12 - ds18Precision))
 #define DS18_PRECISION = 11
-#define PIN8_ONE_WIRE_BUS 8      //  коллектор
-uint8_t ds18DeviceCount8;
-OneWire ds18wireBus8(PIN8_ONE_WIRE_BUS);
-DallasTemperature ds18Sensors8(&ds18wireBus8);
-#define PIN9_ONE_WIRE_BUS 9           //  бойлер
+#define PIN9_ONE_WIRE_BUS 9           
 uint8_t ds18DeviceCount9;
 OneWire ds18wireBus9(PIN9_ONE_WIRE_BUS);
 DallasTemperature ds18Sensors9(&ds18wireBus9);
@@ -48,10 +39,6 @@ volatile long flowSensorPulseCount2 = 0;
 #define FLOW_SENSOR_CALIBRATION_FACTOR 5
 volatile long flowSensorPulseCount3 = 0;
 
-volatile long flowSensorPulseCount4 = 0;
-volatile long flowSensorPulseCount5 = 0;
-volatile long flowSensorPulseCount6 = 0;
-volatile long flowSensorPulseCount7 = 0;
 volatile long flowSensorPulseCountA0 = 0;
 volatile long flowSensorPulseCountA1 = 0;
 volatile long flowSensorPulseCountA2 = 0;
@@ -61,10 +48,12 @@ volatile long flowSensorPulseCountA5 = 0;
 // time
 uint32_t flowSensorLastTime2;
 uint32_t flowSensorLastTime3;
-uint32_t flowSensorLastTime4;
-uint32_t flowSensorLastTime5;
-uint32_t flowSensorLastTime6;
-uint32_t flowSensorLastTime7;
+uint32_t flowSensorLastTimeA0;
+uint32_t flowSensorLastTimeA1;
+uint32_t flowSensorLastTimeA2;
+uint32_t flowSensorLastTimeA3;
+uint32_t flowSensorLastTimeA4;
+uint32_t flowSensorLastTimeA5;
 
 // timers
 RBD::Timer ds18ConversionTimer;
@@ -73,34 +62,15 @@ RBD::Timer ds18ConversionTimer;
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
   //////  Обработчики прерываний три, и их векторы
   //////  называются PCINT0_vect, PCINT1_vect и PCINT2_vect. 
-  ISR(PCINT2_vect){
-///    if (!(PIND & (1 << PD0))) {/* Arduino pin 0 interrupt*/} //  RX
-///    if (!(PIND & (1 << PD1))) {/* Arduino pin 1 interrupt*/} //  TX
-///    if (!(PIND & (1 << PD2))) {/* Arduino pin 2 interrupt*/} //  INT0
-///    if (!(PIND & (1 << PD3))) {/* Arduino pin 3 interrupt*/} //  INT1
-    if (!(PIND & (1 << PD4))) {flowSensorPulseCounter4();}
-    if (!(PIND & (1 << PD5))) {flowSensorPulseCounter5();}
-    if (!(PIND & (1 << PD6))) {flowSensorPulseCounter6();}
-    if (!(PIND & (1 << PD7))) {flowSensorPulseCounter7();}
+ 
+  ISR(PCINT1_vect) {
+    if (!(PINC & (1 << PC0))) {flowSensorPulseCounterA0();}
+    if (!(PINC & (1 << PC1))) {flowSensorPulseCounterA1();}
+    if (!(PINC & (1 << PC2))) {flowSensorPulseCounterA2();}
+    if (!(PINC & (1 << PC3))) {flowSensorPulseCounterA3();}
+    if (!(PINC & (1 << PC4))) {flowSensorPulseCounterA4();}
+    if (!(PINC & (1 << PC5))) {flowSensorPulseCounterA5();}
   }
- 
-///  isr(PCINT1_vect) {
-///    if (!(PINC & (1 << PC0))) {flowSensorPulseCounter4();}
-///    if (!(PINC & (1 << PC1))) {flowSensorPulseCounter5();}
-///    if (!(PINC & (1 << PC2))) {flowSensorPulseCounter6();}
-///    if (!(PINC & (1 << PC3))) {flowSensorPulseCounter7();}
-///    if (!(PINC & (1 << PC4))) {flowSensorPulseCounter4();}
-///    if (!(PINC & (1 << PC5))) {flowSensorPulseCounter5();}
-///  }
- 
-///  isr(PCINT0_vect) { //  занято DS18B20 и W5100 или W5500
-///    if (!(PINB & (1 << PB0))) {/* Arduino pin 8 interrupt*/}
-///    if (!(PINB & (1 << PB1))) {/* Arduino pin 9 interrupt*/}
-///    if (!(PINB & (1 << PB2))) {/* Arduino pin 10 interrupt*/}
-///    if (!(PINB & (1 << PB3))) {/* Arduino pin 11 interrupt*/}
-///    if (!(PINB & (1 << PB4))) {/* Arduino pin 12 interrupt*/}
-///    if (!(PINB & (1 << PB5))) {/* Arduino pin 13 interrupt*/}
-///  }
 
   //////
 
@@ -123,18 +93,15 @@ void setup() {
   //////  Эти прерывания герерируются, когда изменяется состояния пина. 
   //////  Все такие прерывания делятся на три группы
   //////  Переведем пины в режим вход с подтяжкой
-  PORTB = 0b00111111;
   PORTC = 0b01111111;
-  PORTD = 0b11111111;
+  
   //////  Разрешим прерывание на нужной линии, 
   //////  сделав запись в регистры PCMSK0, PCMSK1 или PCMSK2:
-  PCMSK0 = 0b00111111;
   PCMSK1 = 0b01111111;
-  PCMSK2 = 0b11111111;
-  //////  Разрешим уже сами прерывания в общем:
+    //////  Разрешим уже сами прерывания в общем:
   //////  Бит 0 в регистре PCICR отвечает за группу 0, 
   //////  бит 1 за группу 1, бит 2 за группу 2. 
-  PCICR = 0b00000111; //  Разрешили все три группы.
+  PCICR = 0b00000010; //  Разрешили 2 группу (порт С).
   //////
 
   httpServer.begin();
@@ -142,9 +109,7 @@ void setup() {
   Serial.print(F("Please connect to http://"));
   Serial.println(Ethernet.localIP());
 
-  ds18Sensors8.begin();
-  ds18DeviceCount8 = ds18Sensors8.getDeviceCount();
-    ds18Sensors9.begin();
+  ds18Sensors9.begin();
   ds18DeviceCount9 = ds18Sensors9.getDeviceCount();
     
   getSettings();
@@ -154,10 +119,8 @@ void setup() {
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void getSettings() {
    
-  ds18Sensors8.setWaitForConversion(false);
   ds18Sensors9.setWaitForConversion(false);
 
-  ds18Sensors8.requestTemperatures();
   ds18Sensors9.requestTemperatures();
   
   ds18ConversionTimer.setTimeout(DS18_CONVERSION_TIME);
@@ -168,7 +131,7 @@ void getSettings() {
             loop
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void loop() {
-  SWITCH_TO_W5100;
+//  SWITCH_TO_W5100;
 
    resetWhen30Days();
 
@@ -204,7 +167,6 @@ void realTimeService() {
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void ds18RequestTemperatures () {
   if (ds18ConversionTimer.onRestart()) {
-    ds18Sensors8.requestTemperatures();
     ds18Sensors9.requestTemperatures();
 }
 }
@@ -221,18 +183,12 @@ void flowSensorPulseCounter3()
     flowSensorPulseCount3++;// INT1
 }
 
-void flowSensorPulseCounter4()  { flowSensorPulseCount4++;  }  // PCINT2
-void flowSensorPulseCounter5()  { flowSensorPulseCount5++;  }  // PCINT2
-void flowSensorPulseCounter6()  { flowSensorPulseCount6++;  }  // PCINT2
-void flowSensorPulseCounter7()  { flowSensorPulseCount7++;  }  // PCINT2
-
 void flowSensorPulseCounterA0()  { flowSensorPulseCountA0++;  }  // PCINT1
 void flowSensorPulseCounterA1()  { flowSensorPulseCountA1++;  }  // PCINT1
 void flowSensorPulseCounterA2()  { flowSensorPulseCountA2++;  }  // PCINT1
 void flowSensorPulseCounterA3()  { flowSensorPulseCountA3++;  }  // PCINT1
 void flowSensorPulseCounterA4()  { flowSensorPulseCountA4++;  }  // PCINT1
 void flowSensorPulseCounterA5()  { flowSensorPulseCountA5++;  }  // PCINT1
-
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             createDataString
@@ -267,41 +223,31 @@ String createDataString() {
     resultData.concat(F(","));
   }
 
-  for (uint8_t index8 = 0; index8 < ds18DeviceCount8; index8++)
-  {
-    DeviceAddress deviceAddress8;
-    ds18Sensors8.getAddress(deviceAddress8, index8);
-        resultData.concat(F("\n\t\""));
-    for (uint8_t i = 0; i < 8; i++)
-    {
-      if (deviceAddress8[i] < 16) resultData.concat("0");
-
-      resultData.concat(String(deviceAddress8[i], HEX));
-    }
-    resultData.concat(F("\":"));
-    resultData.concat(ds18Sensors8.getTempC(deviceAddress8));
-    resultData.concat(F(","));
-  }
-  
-//  resultData.concat(F(","));
+  //  resultData.concat(F(","));
   resultData.concat(F("\n\t\"k-flow-2\":"));
   resultData.concat(getFlowData2());
   resultData.concat(F(","));
   resultData.concat(F("\n\t\"k-flow-3\":"));
   resultData.concat(getFlowData3());
     resultData.concat(F(","));
-  resultData.concat(F("\n\t\"k-flow-4\":"));
-  resultData.concat(getFlowData4());
+  resultData.concat(F("\n\t\"k-flow-A0\":"));
+  resultData.concat(getFlowDataA0());
   resultData.concat(F(","));
-  resultData.concat(F("\n\t\"k-flow-5\":"));
-  resultData.concat(getFlowData5());
+  resultData.concat(F("\n\t\"k-flow-A1\":"));
+  resultData.concat(getFlowDataA1());
     resultData.concat(F(","));
-  resultData.concat(F("\n\t\"k-flow-6\":"));
-  resultData.concat(getFlowData6());
+  resultData.concat(F("\n\t\"k-flow-A2\":"));
+  resultData.concat(getFlowDataA2());
   resultData.concat(F(","));
-  resultData.concat(F("\n\t\"k-flow-7\":"));
-  resultData.concat(getFlowData7());
-  resultData.concat(F("\n\t }"));
+  resultData.concat(F("\n\t\"k-flow-A3\":"));
+  resultData.concat(getFlowDataA3());
+    resultData.concat(F(","));
+  resultData.concat(F("\n\t\"k-flow-A4\":"));
+  resultData.concat(getFlowDataA4());
+  resultData.concat(F(","));
+  resultData.concat(F("\n\t\"k-flow-A5\":"));
+  resultData.concat(getFlowDataA5());
+    resultData.concat(F("\n\t }"));
   resultData.concat(F(","));
   resultData.concat(F("\n\"freeRam\":"));
   resultData.concat(freeRam());
@@ -375,81 +321,124 @@ int getFlowData3()
 }
 
 /////////////////////
-int getFlowData4()
+int getFlowDataA0()
 {
-  unsigned long flowSensorPulsesPerSecond4;
+  unsigned long flowSensorPulsesPerSecondA0;
 
-  unsigned long deltaTime = millis() - flowSensorLastTime4;
+  unsigned long deltaTime = millis() - flowSensorLastTimeA0;
   if (deltaTime < 1000)  { return; }
 
-///   detachInterrupt(PIN_INTERRUPT_FLOW_SENSOR3);
-  flowSensorPulsesPerSecond4 = flowSensorPulseCount4 * 1000 / deltaTime;
+///   detachInterrupt(PIN_INTERRUPT_FLOW_SENSORA0);
+  flowSensorPulsesPerSecondA0 = flowSensorPulseCountA0 * 1000 / deltaTime;
   ///flowSensorPulsesPerSecond3 *= 1000;
   ///flowSensorPulsesPerSecond3 /= deltaTime; //  количество за секунду
 
-  flowSensorLastTime4 = millis();
-  flowSensorPulseCount4 = 0;
-///  attachInterrupt(PIN_INTERRUPT_FLOW_SENSOR3, flowSensorPulseCounter3, FALLING);
+  flowSensorLastTimeA0 = millis();
+  flowSensorPulseCountA0 = 0;
+///  attachInterrupt(PIN_INTERRUPT_FLOW_SENSORA0, flowSensorPulseCounterA0, FALLING);
 
-  return flowSensorPulsesPerSecond4;
+  return flowSensorPulsesPerSecondA0;
 }
 
 /////////////////////
-int getFlowData5()
+int getFlowDataA1()
 {
-  unsigned long flowSensorPulsesPerSecond5;
+  unsigned long flowSensorPulsesPerSecondA1;
 
-  unsigned long deltaTime = millis() - flowSensorLastTime5;
+  unsigned long deltaTime = millis() - flowSensorLastTimeA1;
   if (deltaTime < 1000)  { return; }
 
-///   detachInterrupt(PIN_INTERRUPT_FLOW_SENSOR3);
-  flowSensorPulsesPerSecond5 = flowSensorPulseCount5 * 1000 / deltaTime;
+///   detachInterrupt(PIN_INTERRUPT_FLOW_SENSORA1);
+  flowSensorPulsesPerSecondA1 = flowSensorPulseCountA1 * 1000 / deltaTime;
   ///flowSensorPulsesPerSecond3 *= 1000;
   ///flowSensorPulsesPerSecond3 /= deltaTime; //  количество за секунду
 
-  flowSensorLastTime5 = millis();
-  flowSensorPulseCount5 = 0;
-///  attachInterrupt(PIN_INTERRUPT_FLOW_SENSOR3, flowSensorPulseCounter3, FALLING);
+  flowSensorLastTimeA1 = millis();
+  flowSensorPulseCountA1 = 0;
+///  attachInterrupt(PIN_INTERRUPT_FLOW_SENSORA1, flowSensorPulseCounterA1, FALLING);
 
-  return flowSensorPulsesPerSecond5;
+  return flowSensorPulsesPerSecondA1;
 }
-/////////////////////
-int getFlowData6()
-{
-  unsigned long flowSensorPulsesPerSecond6;
 
-  unsigned long deltaTime = millis() - flowSensorLastTime6;
+/////////////////////
+int getFlowDataA2()
+{
+  unsigned long flowSensorPulsesPerSecondA2;
+
+  unsigned long deltaTime = millis() - flowSensorLastTimeA2;
   if (deltaTime < 1000)  { return; }
 
-///   detachInterrupt(PIN_INTERRUPT_FLOW_SENSOR3);
-///  flowSensorPulsesPerSecond6 = flowSensorPulseCount6 * 1000 / deltaTime;
-  flowSensorPulsesPerSecond6 *= 1000;
-  flowSensorPulsesPerSecond6 /= deltaTime; //  количество за секунду
+///   detachInterrupt(PIN_INTERRUPT_FLOW_SENSORA2);
+  flowSensorPulsesPerSecondA2 = flowSensorPulseCountA2 * 1000 / deltaTime;
+  ///flowSensorPulsesPerSecond3 *= 1000;
+  ///flowSensorPulsesPerSecond3 /= deltaTime; //  количество за секунду
 
-  flowSensorLastTime6 = millis();
-  flowSensorPulseCount6 = 0;
-///  attachInterrupt(PIN_INTERRUPT_FLOW_SENSOR3, flowSensorPulseCounter3, FALLING);
+  flowSensorLastTimeA2 = millis();
+  flowSensorPulseCountA2 = 0;
+///  attachInterrupt(PIN_INTERRUPT_FLOW_SENSORA2, flowSensorPulseCounterA2, FALLING);
 
-  return flowSensorPulsesPerSecond6;
+  return flowSensorPulsesPerSecondA2;
 }
-/////////////////////
-int getFlowData7()
-{
-  unsigned long flowSensorPulsesPerSecond7;
 
-  unsigned long deltaTime = millis() - flowSensorLastTime7;
+
+/////////////////////
+int getFlowDataA3()
+{
+  unsigned long flowSensorPulsesPerSecondA3;
+
+  unsigned long deltaTime = millis() - flowSensorLastTimeA3;
   if (deltaTime < 1000)  { return; }
 
-///   detachInterrupt(PIN_INTERRUPT_FLOW_SENSOR3);
-///  flowSensorPulsesPerSecond7 = flowSensorPulseCount7 * 1000 / deltaTime;
-  flowSensorPulsesPerSecond7 *= 1000;
-  flowSensorPulsesPerSecond7 /= deltaTime; //  количество за секунду
+///   detachInterrupt(PIN_INTERRUPT_FLOW_SENSORA3);
+  flowSensorPulsesPerSecondA3 = flowSensorPulseCountA3 * 1000 / deltaTime;
+  ///flowSensorPulsesPerSecond3 *= 1000;
+  ///flowSensorPulsesPerSecond3 /= deltaTime; //  количество за секунду
 
-  flowSensorLastTime7 = millis();
-  flowSensorPulseCount7 = 0;
-///  attachInterrupt(PIN_INTERRUPT_FLOW_SENSOR3, flowSensorPulseCounter3, FALLING);
+  flowSensorLastTimeA3 = millis();
+  flowSensorPulseCountA3 = 0;
+///  attachInterrupt(PIN_INTERRUPT_FLOW_SENSORA3, flowSensorPulseCounterA3, FALLING);
 
-  return flowSensorPulsesPerSecond7;
+  return flowSensorPulsesPerSecondA3;
+}
+
+/////////////////////
+int getFlowDataA4()
+{
+  unsigned long flowSensorPulsesPerSecondA4;
+
+  unsigned long deltaTime = millis() - flowSensorLastTimeA4;
+  if (deltaTime < 1000)  { return; }
+
+///   detachInterrupt(PIN_INTERRUPT_FLOW_SENSORA4);
+  flowSensorPulsesPerSecondA4 = flowSensorPulseCountA4 * 1000 / deltaTime;
+  ///flowSensorPulsesPerSecond3 *= 1000;
+  ///flowSensorPulsesPerSecond3 /= deltaTime; //  количество за секунду
+
+  flowSensorLastTimeA4 = millis();
+  flowSensorPulseCountA4 = 0;
+///  attachInterrupt(PIN_INTERRUPT_FLOW_SENSORA4, flowSensorPulseCounterA4, FALLING);
+
+  return flowSensorPulsesPerSecondA4;
+}
+
+/////////////////////
+int getFlowDataA5()
+{
+  unsigned long flowSensorPulsesPerSecondA5;
+
+  unsigned long deltaTime = millis() - flowSensorLastTimeA5;
+  if (deltaTime < 1000)  { return; }
+
+///   detachInterrupt(PIN_INTERRUPT_FLOW_SENSORA5);
+  flowSensorPulsesPerSecondA5 = flowSensorPulseCountA5 * 1000 / deltaTime;
+  ///flowSensorPulsesPerSecond3 *= 1000;
+  ///flowSensorPulsesPerSecond3 /= deltaTime; //  количество за секунду
+
+  flowSensorLastTimeA5 = millis();
+  flowSensorPulseCountA5 = 0;
+///  attachInterrupt(PIN_INTERRUPT_FLOW_SENSORA5, flowSensorPulseCounterA5, FALLING);
+
+  return flowSensorPulsesPerSecondA5;
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
