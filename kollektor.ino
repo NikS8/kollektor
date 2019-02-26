@@ -3,7 +3,8 @@
                                 Copyright © 2019, Zigfred & Nik.S
 31.01.2019 v1
 18.02.2019 V2 Прерывания PCINT0_vect, PCINT1_vect и PCINT2_vect
-25.02.2019 V3 dell PCINT0_vect, PCINT1_vect и PCINT2_vect
+25.02.2019 V3 dell PCINT0_vect и PCINT2_vect
+26.02.2019 V4 add #include <EnableInterrupt.h>
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*******************************************************************\
 Сервер kollektor выдает данные: 
@@ -16,9 +17,11 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <RBD_Timer.h>
+#include <EnableInterrupt.h>
 
 #define DEVICE_ID "kollektor";
-#define VERSION 3
+#define VERSION 4
+
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0x88, 0x88};
 EthernetServer httpServer(40159);
 #define RESET_UPTIME_TIME 43200000  //  = 30 * 24 * 60 * 60 * 1000 
@@ -29,7 +32,7 @@ EthernetServer httpServer(40159);
 uint8_t ds18DeviceCount9;
 OneWire ds18wireBus9(PIN9_ONE_WIRE_BUS);
 DallasTemperature ds18Sensors9(&ds18wireBus9);
-
+/*
 #define PIN_FLOW_SENSOR2 2
 #define PIN_INTERRUPT_FLOW_SENSOR2 0
 #define FLOW_SENSOR_CALIBRATION_FACTOR 5
@@ -38,6 +41,7 @@ volatile long flowSensorPulseCount2 = 0;
 #define PIN_INTERRUPT_FLOW_SENSOR3 1
 #define FLOW_SENSOR_CALIBRATION_FACTOR 5
 volatile long flowSensorPulseCount3 = 0;
+*/
 
 volatile long flowSensorPulseCountA0 = 0;
 volatile long flowSensorPulseCountA1 = 0;
@@ -46,8 +50,8 @@ volatile long flowSensorPulseCountA3 = 0;
 volatile long flowSensorPulseCountA4 = 0;
 volatile long flowSensorPulseCountA5 = 0;
 // time
-uint32_t flowSensorLastTime2;
-uint32_t flowSensorLastTime3;
+//uint32_t flowSensorLastTime2;
+//uint32_t flowSensorLastTime3;
 uint32_t flowSensorLastTimeA0;
 uint32_t flowSensorLastTimeA1;
 uint32_t flowSensorLastTimeA2;
@@ -57,22 +61,7 @@ uint32_t flowSensorLastTimeA5;
 
 // timers
 RBD::Timer ds18ConversionTimer;
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
-            PCINT0_vect, PCINT1_vect и PCINT2_vect
-\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-  //////  Обработчики прерываний три, и их векторы
-  //////  называются PCINT0_vect, PCINT1_vect и PCINT2_vect. 
- 
-  ISR(PCINT1_vect) {
-    if (!(PINC & (1 << PC0))) {flowSensorPulseCounterA0();}
-    if (!(PINC & (1 << PC1))) {flowSensorPulseCounterA1();}
-    if (!(PINC & (1 << PC2))) {flowSensorPulseCounterA2();}
-    if (!(PINC & (1 << PC3))) {flowSensorPulseCounterA3();}
-    if (!(PINC & (1 << PC4))) {flowSensorPulseCounterA4();}
-    if (!(PINC & (1 << PC5))) {flowSensorPulseCounterA5();}
-  }
 
-  //////
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             setup
@@ -83,26 +72,18 @@ void setup() {
   while (!Serial) continue;
 /*
   pinMode(PIN_FLOW_SENSOR2, INPUT);
-    attachInterrupt(PIN_INTERRUPT_FLOW_SENSOR2, flowSensorPulseCount2, FALLING);
+    attachInterrupt(PIN_INTERRUPT_FLOW_SENSOR2, flowSensorPulseCounter2, FALLING);
   sei();
   pinMode(PIN_FLOW_SENSOR3, INPUT);
-    attachInterrupt(PIN_INTERRUPT_FLOW_SENSOR3, flowSensorPulseCount3, FALLING);
+    attachInterrupt(PIN_INTERRUPT_FLOW_SENSOR3, flowSensorPulseCounter3, FALLING);
   sei();
-*/
-  //////  Прерывания, которые называются PCINT (Pin Change Interrupts). 
-  //////  Эти прерывания герерируются, когда изменяется состояния пина. 
-  //////  Все такие прерывания делятся на три группы
-  //////  Переведем пины в режим вход с подтяжкой
-  PORTC = 0b01111111;
-  
-  //////  Разрешим прерывание на нужной линии, 
-  //////  сделав запись в регистры PCMSK0, PCMSK1 или PCMSK2:
-  PCMSK1 = 0b01111111;
-    //////  Разрешим уже сами прерывания в общем:
-  //////  Бит 0 в регистре PCICR отвечает за группу 0, 
-  //////  бит 1 за группу 1, бит 2 за группу 2. 
-  PCICR = 0b00000010; //  Разрешили 2 группу (порт С).
-  //////
+  */
+  enableInterrupt(A0, flowSensorPulseCounterA0, FALLING);
+  enableInterrupt(A1, flowSensorPulseCounterA1, FALLING);
+  enableInterrupt(A2, flowSensorPulseCounterA2, FALLING);
+  enableInterrupt(A3, flowSensorPulseCounterA3, FALLING);
+  enableInterrupt(A4, flowSensorPulseCounterA4, FALLING);
+  enableInterrupt(A5, flowSensorPulseCounterA5, FALLING);
 
   httpServer.begin();
   Serial.println(F("Server is ready."));
@@ -131,11 +112,9 @@ void getSettings() {
             loop
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void loop() {
-//  SWITCH_TO_W5100;
+  resetWhen30Days();
 
-   resetWhen30Days();
-
-    realTimeService();
+  realTimeService();
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
@@ -173,7 +152,7 @@ void ds18RequestTemperatures () {
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             flowSensorPulseCounter
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-void flowSensorPulseCounter2()
+/*void flowSensorPulseCounter2()
 {
     flowSensorPulseCount2++;// INT0
 }
@@ -182,13 +161,13 @@ void flowSensorPulseCounter3()
 {
     flowSensorPulseCount3++;// INT1
 }
-
-void flowSensorPulseCounterA0()  { flowSensorPulseCountA0++;  }  // PCINT1
-void flowSensorPulseCounterA1()  { flowSensorPulseCountA1++;  }  // PCINT1
-void flowSensorPulseCounterA2()  { flowSensorPulseCountA2++;  }  // PCINT1
-void flowSensorPulseCounterA3()  { flowSensorPulseCountA3++;  }  // PCINT1
-void flowSensorPulseCounterA4()  { flowSensorPulseCountA4++;  }  // PCINT1
-void flowSensorPulseCounterA5()  { flowSensorPulseCountA5++;  }  // PCINT1
+*/
+void flowSensorPulseCounterA0()  { flowSensorPulseCountA0++;  }
+void flowSensorPulseCounterA1()  { flowSensorPulseCountA1++;  }
+void flowSensorPulseCounterA2()  { flowSensorPulseCountA2++;  }
+void flowSensorPulseCounterA3()  { flowSensorPulseCountA3++;  }
+void flowSensorPulseCounterA4()  { flowSensorPulseCountA4++;  }
+void flowSensorPulseCounterA5()  { flowSensorPulseCountA5++;  }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             createDataString
@@ -223,14 +202,14 @@ String createDataString() {
     resultData.concat(F(","));
   }
 
-  //  resultData.concat(F(","));
+ /* //  resultData.concat(F(","));
   resultData.concat(F("\n\t\"k-flow-2\":"));
   resultData.concat(getFlowData2());
   resultData.concat(F(","));
   resultData.concat(F("\n\t\"k-flow-3\":"));
   resultData.concat(getFlowData3());
     resultData.concat(F(","));
-  resultData.concat(F("\n\t\"k-flow-A0\":"));
+ */ resultData.concat(F("\n\t\"k-flow-A0\":"));
   resultData.concat(getFlowDataA0());
   resultData.concat(F(","));
   resultData.concat(F("\n\t\"k-flow-A1\":"));
@@ -261,7 +240,7 @@ String createDataString() {
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             getFlowData
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-int getFlowData2()
+/*int getFlowData2()
 {
   //  static int flowSensorPulsesPerSecond;
   unsigned long flowSensorPulsesPerSecond2;
@@ -319,7 +298,7 @@ int getFlowData3()
   return flowSensorPulsesPerSecond3;
 
 }
-
+*/
 /////////////////////
 int getFlowDataA0()
 {
@@ -440,6 +419,7 @@ int getFlowDataA5()
 
   return flowSensorPulsesPerSecondA5;
 }
+
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             UTILS
