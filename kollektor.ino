@@ -1,29 +1,32 @@
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
-                                                    kollektor.ino 
-                                Copyright © 2019, Zigfred & Nik.S
+                                                      kollektor.ino 
+                                  Copyright © 2019, Zigfred & Nik.S
 31.01.2019 v1
 18.02.2019 V2 Прерывания PCINT0_vect, PCINT1_vect и PCINT2_vect
-25.02.2019 V3 dell PCINT0_vect и PCINT2_vect
-26.02.2019 V4 add #include <EnableInterrupt.h>
+25.02.2019 V3 dell PCINT0_vect, PCINT1_vect и PCINT2_vect
+26.02.2019 V4 замена на #include <EnableInterrupt.h>
+26.02.2019 V5 коллектор теплого пола:cf-cook,-office,-dorm,-corridor
+26.02.2019 V6 add enableInterrupt(2,flowSensorPulseCounter2,FALLING)
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*******************************************************************\
 Сервер kollektor выдает данные: 
   цифровые: 
-    датчик скорости потока воды YF-B5
+    датчики скорости потока воды YF-B5
     датчики температуры DS18B20
 /*******************************************************************/
 
-#include <Ethernet2.h> //IPAddress ip(192, 168, 1, 159); 
+#include <Ethernet2.h> 
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <RBD_Timer.h>
 #include <EnableInterrupt.h>
 
 #define DEVICE_ID "kollektor";
-#define VERSION 4
+#define VERSION 6
 
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0x88, 0x88};
-EthernetServer httpServer(40159);
+EthernetServer httpServer(40159); //IPAddress ip(192, 168, 1, 159);
+
 #define RESET_UPTIME_TIME 43200000  //  = 30 * 24 * 60 * 60 * 1000 
                                     // reset after 30 days uptime 
 #define DS18_CONVERSION_TIME 750 // (1 << (12 - ds18Precision))
@@ -37,28 +40,28 @@ DallasTemperature ds18Sensors9(&ds18wireBus9);
 #define PIN_INTERRUPT_FLOW_SENSOR2 0
 #define FLOW_SENSOR_CALIBRATION_FACTOR 5
 volatile long flowSensorPulseCount2 = 0;
+
 #define PIN_FLOW_SENSOR3 3
 #define PIN_INTERRUPT_FLOW_SENSOR3 1
 #define FLOW_SENSOR_CALIBRATION_FACTOR 5
 volatile long flowSensorPulseCount3 = 0;
 */
-
 volatile long flowSensorPulseCountA0 = 0;
 volatile long flowSensorPulseCountA1 = 0;
 volatile long flowSensorPulseCountA2 = 0;
 volatile long flowSensorPulseCountA3 = 0;
 volatile long flowSensorPulseCountA4 = 0;
 volatile long flowSensorPulseCountA5 = 0;
+volatile long flowSensorPulseCount2 = 0;
 // time
-//uint32_t flowSensorLastTime2;
-//uint32_t flowSensorLastTime3;
 uint32_t flowSensorLastTimeA0;
 uint32_t flowSensorLastTimeA1;
 uint32_t flowSensorLastTimeA2;
 uint32_t flowSensorLastTimeA3;
 uint32_t flowSensorLastTimeA4;
 uint32_t flowSensorLastTimeA5;
-
+uint32_t flowSensorLastTime2;
+//uint32_t flowSensorLastTime3;
 // timers
 RBD::Timer ds18ConversionTimer;
 
@@ -74,16 +77,18 @@ void setup() {
   pinMode(PIN_FLOW_SENSOR2, INPUT);
     attachInterrupt(PIN_INTERRUPT_FLOW_SENSOR2, flowSensorPulseCounter2, FALLING);
   sei();
+ 
   pinMode(PIN_FLOW_SENSOR3, INPUT);
     attachInterrupt(PIN_INTERRUPT_FLOW_SENSOR3, flowSensorPulseCounter3, FALLING);
   sei();
-  */
+  */ 
   enableInterrupt(A0, flowSensorPulseCounterA0, FALLING);
   enableInterrupt(A1, flowSensorPulseCounterA1, FALLING);
   enableInterrupt(A2, flowSensorPulseCounterA2, FALLING);
   enableInterrupt(A3, flowSensorPulseCounterA3, FALLING);
   enableInterrupt(A4, flowSensorPulseCounterA4, FALLING);
   enableInterrupt(A5, flowSensorPulseCounterA5, FALLING);
+  enableInterrupt(2, flowSensorPulseCounter2, FALLING);
 
   httpServer.begin();
   Serial.println(F("Server is ready."));
@@ -162,12 +167,14 @@ void flowSensorPulseCounter3()
     flowSensorPulseCount3++;// INT1
 }
 */
+
 void flowSensorPulseCounterA0()  { flowSensorPulseCountA0++;  }
 void flowSensorPulseCounterA1()  { flowSensorPulseCountA1++;  }
 void flowSensorPulseCounterA2()  { flowSensorPulseCountA2++;  }
 void flowSensorPulseCounterA3()  { flowSensorPulseCountA3++;  }
 void flowSensorPulseCounterA4()  { flowSensorPulseCountA4++;  }
 void flowSensorPulseCounterA5()  { flowSensorPulseCountA5++;  }
+void flowSensorPulseCounter2()  { flowSensorPulseCount2++;  }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             createDataString
@@ -194,7 +201,6 @@ String createDataString() {
     for (uint8_t i = 0; i < 8; i++)
     {
       if (deviceAddress9[i] < 16) resultData.concat("0");
-
       resultData.concat(String(deviceAddress9[i], HEX));
     }
     resultData.concat(F("\":"));
@@ -202,39 +208,36 @@ String createDataString() {
     resultData.concat(F(","));
   }
 
- /* //  resultData.concat(F(","));
-  resultData.concat(F("\n\t\"k-flow-2\":"));
-  resultData.concat(getFlowData2());
-  resultData.concat(F(","));
-  resultData.concat(F("\n\t\"k-flow-3\":"));
-  resultData.concat(getFlowData3());
-    resultData.concat(F(","));
- */ resultData.concat(F("\n\t\"k-flow-A0\":"));
-  resultData.concat(getFlowDataA0());
-  resultData.concat(F(","));
-  resultData.concat(F("\n\t\"k-flow-A1\":"));
-  resultData.concat(getFlowDataA1());
-    resultData.concat(F(","));
-  resultData.concat(F("\n\t\"k-flow-A2\":"));
-  resultData.concat(getFlowDataA2());
-  resultData.concat(F(","));
-  resultData.concat(F("\n\t\"k-flow-A3\":"));
+  resultData.concat(F("\n\t\"cf-cook\":"));
   resultData.concat(getFlowDataA3());
+  resultData.concat(F(","));
+  resultData.concat(F("\n\t\"cf-office\":"));
+  resultData.concat(getFlowDataA2());
     resultData.concat(F(","));
-  resultData.concat(F("\n\t\"k-flow-A4\":"));
+  resultData.concat(F("\n\t\"cf-dorm\":"));
+  resultData.concat(getFlowDataA1());
+  resultData.concat(F(","));
+  resultData.concat(F("\n\t\"cf-corridor\":"));
+  resultData.concat(getFlowDataA0());
+    resultData.concat(F(","));
+  resultData.concat(F("\n\t\"cf-room\":"));
   resultData.concat(getFlowDataA4());
   resultData.concat(F(","));
-  resultData.concat(F("\n\t\"k-flow-A5\":"));
+  resultData.concat(F("\n\t\"cf-bath\":"));
   resultData.concat(getFlowDataA5());
+    resultData.concat(F(","));
+  resultData.concat(F("\n\t\"cf-kitchen\":"));
+  resultData.concat(getFlowData2());
+ // resultData.concat(F(","));
+ // resultData.concat(F("\n\t\"cf-radiator\":"));
+ // resultData.concat(getFlowData3());
     resultData.concat(F("\n\t }"));
   resultData.concat(F(","));
   resultData.concat(F("\n\"freeRam\":"));
   resultData.concat(freeRam());
   resultData.concat(F("\n }"));
- // resultData.concat(F("}"));
 
   return resultData;
-
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
@@ -299,6 +302,26 @@ int getFlowData3()
 
 }
 */
+/////////////////////
+int getFlowData2()
+{
+  unsigned long flowSensorPulsesPerSecond2;
+
+  unsigned long deltaTime = millis() - flowSensorLastTime2;
+  if (deltaTime < 1000)  { return; }
+
+///   detachInterrupt(PIN_INTERRUPT_FLOW_SENSORA0);
+  flowSensorPulsesPerSecond2 = flowSensorPulseCount2 * 1000 / deltaTime;
+  ///flowSensorPulsesPerSecond3 *= 1000;
+  ///flowSensorPulsesPerSecond3 /= deltaTime; //  количество за секунду
+
+  flowSensorLastTime2 = millis();
+  flowSensorPulseCount2 = 0;
+///  attachInterrupt(PIN_INTERRUPT_FLOW_SENSORA0, flowSensorPulseCounterA0, FALLING);
+
+  return flowSensorPulsesPerSecond2;
+}
+
 /////////////////////
 int getFlowDataA0()
 {
