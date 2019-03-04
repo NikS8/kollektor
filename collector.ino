@@ -8,6 +8,7 @@
 26.02.2019 V5 коллектор теплого пола:cf-cook,-office,-dorm,-corridor
 27.02.2019 V6 add enableInterrupt(2,flowSensorPulseCounter2,FALLING)
 28.02.2019 v7 переименование на collector, cf-hall-f, cf-hall-t ...
+04.03.2019 v8 время работы 
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*******************************************************************\
 Сервер kollektor выдает данные: 
@@ -22,8 +23,8 @@
 #include <RBD_Timer.h>
 #include <EnableInterrupt.h>
 
-#define DEVICE_ID "collector";
-#define VERSION 7
+#define DEVICE_ID "collector"
+#define VERSION 8
 
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0x88, 0x88};
 EthernetServer httpServer(40159); //IPAddress ip(192, 168, 1, 159);
@@ -158,15 +159,13 @@ String createDataString() {
   String resultData;
 
   resultData.concat(F("{"));
-  resultData.concat(F("\n\"deviceId\":"));
-//  resultData.concat(String(DEVICE_ID));
-  resultData.concat(F("\"collector\""));
-  resultData.concat(F(","));
-  resultData.concat(F("\n\"version\":"));
+  resultData.concat(F("\n\"deviceId\":\""));
+  resultData.concat(DEVICE_ID);
+//  resultData.concat(F("\"collector\""));
+  resultData.concat(F("\",\n\"version\":"));
   resultData.concat(VERSION);
 
-  resultData.concat(F(","));
-  resultData.concat(F("\n\"data\": {"));
+  resultData.concat(F(",\n\"data\": {"));
 
   for (uint8_t index9 = 0; index9 < ds18DeviceCount9; index9++)
   {
@@ -182,35 +181,28 @@ String createDataString() {
     resultData.concat(ds18Sensors9.getTempC(deviceAddress9));
     resultData.concat(F(","));
   }
-
   resultData.concat(F("\n\t\"cf-hall-f\":"));
   resultData.concat(getFlowDataA3());
-  resultData.concat(F(","));
-  resultData.concat(F("\n\t\"cf-tv-f\":"));
+  resultData.concat(F(",\n\t\"cf-tv-f\":"));
   resultData.concat(getFlowDataA2());
-    resultData.concat(F(","));
-  resultData.concat(F("\n\t\"cf-bed-f\":"));
+  resultData.concat(F(",\n\t\"cf-bed-f\":"));
   resultData.concat(getFlowDataA1());
-  resultData.concat(F(","));
-  resultData.concat(F("\n\t\"cf-st-f\":"));
+  resultData.concat(F(",\n\t\"cf-st-f\":"));
   resultData.concat(getFlowDataA0());
-    resultData.concat(F(","));
-  resultData.concat(F("\n\t\"cf-kitch-f\":"));
+  resultData.concat(F(",\n\t\"cf-kitch-f\":"));
   resultData.concat(getFlowData2());
- // resultData.concat(F(","));
- // resultData.concat(F("\n\t\"cf-radiator-f\":"));
+ // resultData.concat(F(",\n\t\"cf-radiator-f\":"));
  // resultData.concat(getFlowData3());
-    resultData.concat(F(","));
-  resultData.concat(F("\n\t\"cf-vbath-t\":"));
-  resultData.concat(getFlowDataA4());
-  resultData.concat(F(","));
-  resultData.concat(F("\n\t\"cf-vbed-t\":"));
+  resultData.concat(F(",\n\t\"cf-vbath-f\":"));
   resultData.concat(getFlowDataA5());
+  resultData.concat(F(",\n\t\"cf-vbed-f\":"));
+  resultData.concat(getFlowDataA4());
     resultData.concat(F("\n\t }"));
-  resultData.concat(F(","));
-  resultData.concat(F("\n\"freeRam\":"));
+  resultData.concat(F(",\n\"freeRam\":"));
   resultData.concat(freeRam());
-  resultData.concat(F("\n }"));
+  resultData.concat(F(",\n\"upTime\":\""));
+  resultData.concat(upTime(millis()));
+  resultData.concat(F("\"\n }"));
 
   return resultData;
 }
@@ -331,6 +323,34 @@ int getFlowDataA5()
   return flowSensorPulsesPerSecondA5;
 }
 
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
+            Время работы после старта или рестарта
+\*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+String upTime(uint32_t lasttime)
+{
+  lasttime /= 1000;
+  String lastStartTime;
+  
+  if (lasttime > 86400) {
+    uint8_t lasthour = lasttime/86400;
+    lastStartTime.concat(lasthour);
+    lastStartTime.concat(F("d "));
+    lasttime = (lasttime-(86400*lasthour));
+  }
+  if (lasttime > 3600) {
+    if (lasttime/3600<10) { lastStartTime.concat(F("0")); }
+  lastStartTime.concat(lasttime/3600);
+  lastStartTime.concat(F(":"));
+  }
+  if (lasttime/60%60<10) { lastStartTime.concat(F("0")); }
+lastStartTime.concat((lasttime/60)%60);
+lastStartTime.concat(F(":"));
+  if (lasttime%60<10) { lastStartTime.concat(F("0")); }
+lastStartTime.concat(lasttime%60);
+//lastStartTime.concat(F("s"));
+
+return lastStartTime;
+}
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*\
             UTILS
