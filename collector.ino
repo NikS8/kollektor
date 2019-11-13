@@ -9,6 +9,7 @@
 27.02.2019 V6 add enableInterrupt(2,flowSensorPulseCounter2,FALLING)
 28.02.2019 v7 переименование на collector, cf-hall-f, cf-hall-t ...
 04.03.2019 v8 время работы 
+13.11.2019 v9 переход на статические IP
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*******************************************************************\
 Сервер kollektor выдает данные: 
@@ -24,10 +25,11 @@
 #include <EnableInterrupt.h>
 
 #define DEVICE_ID "collector"
-#define VERSION 8
+#define VERSION 9
 
-byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0x88, 0x88};
-EthernetServer httpServer(40159); //IPAddress ip(192, 168, 1, 159);
+byte mac[] = {0xCA, 0x74, 0xC0, 0xFF, 0xCF, 0x01};
+IPAddress ip(192, 168, 1, 113);
+EthernetServer httpServer(40113); // Ethernet server
 
 #define RESET_UPTIME_TIME 43200000  //  = 30 * 24 * 60 * 60 * 1000 
                                     // reset after 30 days uptime 
@@ -64,9 +66,16 @@ RBD::Timer ds18ConversionTimer;
 \*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void setup() {
   Serial.begin(9600);
-  Ethernet.begin(mac);
-  while (!Serial) continue;
+  Serial.println("Serial.begin(9600)"); 
 
+  Ethernet.begin(mac,ip);
+  
+  Serial.println(F("Server is ready."));
+  Serial.print(F("Please connect to http://"));
+  Serial.println(Ethernet.localIP());
+  
+  httpServer.begin();
+  
   enableInterrupt(A0, flowSensorPulseCounterA0, FALLING);
   enableInterrupt(A1, flowSensorPulseCounterA1, FALLING);
   enableInterrupt(A2, flowSensorPulseCounterA2, FALLING);
@@ -75,12 +84,9 @@ void setup() {
   enableInterrupt(A5, flowSensorPulseCounterA5, FALLING);
   enableInterrupt(2, flowSensorPulseCounter2, FALLING);
 //  enableInterrupt(3, flowSensorPulseCounter3, FALLING);
+  
 
-  httpServer.begin();
-  Serial.println(F("Server is ready."));
-  Serial.print(F("Please connect to http://"));
-  Serial.println(Ethernet.localIP());
-
+  
   ds18Sensors9.begin();
   ds18DeviceCount9 = ds18Sensors9.getDeviceCount();
     
